@@ -1,67 +1,71 @@
-const express = require('express');
-const helmet = require('helmet');
-const xss = require('xss-clean');
-const mongoSanitize = require('express-mongo-sanitize');
-const compression = require('compression');
-const cors = require('cors');
-const passport = require('passport');
+const fastify = require('fastify');
+const helmet = require('@fastify/helmet');
+const formbody = require('@fastify/formbody');
+const compress = require('@fastify/compress');
+const cors = require('@fastify/cors');
+const fastifyPassport = require('@fastify/passport');
 const httpStatus = require('http-status');
+const qs = require('qs');
 const config = require('./config/config');
-const morgan = require('./config/morgan');
+const httpLogger = require('./config/httpLogger');
 const { jwtStrategy } = require('./config/passport');
-const { authLimiter } = require('./middlewares/rateLimiter');
+const { xss, mongoSanitize } = require('./middlewares/sanitize');
 const routes = require('./routes/v1');
 const { errorConverter, errorHandler } = require('./middlewares/error');
 const ApiError = require('./utils/ApiError');
 
-const app = express();
+const app = fastify({
+  logger: false,
+  // maximum size of the request body, as applied by the body parsers
+  bodyLimit: 100 * 1024,
+  routerOptions: {
+    // parse the query string with the extended syntax
+    querystringParser: (str) => qs.parse(str),
+  },
+});
+
+// holds the message of the error that was sent back, used by the http logger
+app.decorateReply('errorMessage', '');
 
 if (config.env !== 'test') {
-  app.use(morgan.successHandler);
-  app.use(morgan.errorHandler);
+  app.addHook('onResponse', httpLogger.successHandler);
+  app.addHook('onResponse', httpLogger.errorHandler);
 }
 
 // set security HTTP headers
-app.use(helmet());
+app.register(helmet);
 
-// parse json request body
-app.use(express.json());
+// parse json request body (handled natively by fastify)
 
 // parse urlencoded request body
-app.use(express.urlencoded({ extended: true }));
+app.register(formbody, { parser: (str) => qs.parse(str) });
 
 // sanitize request data
-app.use(xss());
-app.use(mongoSanitize());
+app.addHook('preValidation', xss);
+app.addHook('preValidation', mongoSanitize);
 
 // gzip compression
-app.use(compression());
+app.register(compress);
 
-// enable cors
-app.use(cors());
-app.options('*', cors());
+// enable cors (preflight requests are answered by the plugin itself)
+app.register(cors, { strictPreflight: false });
 
 // jwt authentication
-app.use(passport.initialize());
-passport.use('jwt', jwtStrategy);
-
-// limit repeated failed requests to auth endpoints
-if (config.env === 'production') {
-  app.use('/v1/auth', authLimiter);
-}
+// @fastify/passport pulls in @fastify/flash, which requires a `session` request
+// decorator to be present. This app is stateless, so it is declared as null.
+app.decorateRequest('session', null);
+app.register(fastifyPassport.initialize());
+fastifyPassport.use('jwt', jwtStrategy);
 
 // v1 api routes
-app.use('/v1', routes);
+app.register(routes, { prefix: '/v1' });
 
 // send back a 404 error for any unknown api request
-app.use((req, res, next) => {
-  next(new ApiError(httpStatus.NOT_FOUND, 'Not found'));
+app.setNotFoundHandler(() => {
+  throw new ApiError(httpStatus.NOT_FOUND, 'Not found');
 });
 
-// convert error to ApiError, if needed
-app.use(errorConverter);
-
-// handle error
-app.use(errorHandler);
+// convert error to ApiError, if needed, and handle it
+app.setErrorHandler((err, request, reply) => errorHandler(errorConverter(err), request, reply));
 
 module.exports = app;

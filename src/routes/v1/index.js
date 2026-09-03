@@ -1,10 +1,7 @@
-const express = require('express');
 const authRoute = require('./auth.route');
 const userRoute = require('./user.route');
 const docsRoute = require('./docs.route');
 const config = require('../../config/config');
-
-const router = express.Router();
 
 const defaultRoutes = [
   {
@@ -25,15 +22,18 @@ const devRoutes = [
   },
 ];
 
-defaultRoutes.forEach((route) => {
-  router.use(route.path, route.route);
-});
-
-/* istanbul ignore next */
-if (config.env === 'development') {
-  devRoutes.forEach((route) => {
-    router.use(route.path, route.route);
+const router = async (fastify) => {
+  defaultRoutes.forEach((route) => {
+    fastify.register(route.route, { prefix: route.path });
   });
-}
+
+  /* istanbul ignore next */
+  if (config.env === 'development') {
+    devRoutes.forEach((route) => {
+      // the swagger ui plugin mounts its own routes, so it is given the path
+      fastify.register(route.route, { routePrefix: route.path });
+    });
+  }
+};
 
 module.exports = router;

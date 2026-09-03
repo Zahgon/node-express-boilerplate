@@ -9,6 +9,10 @@ const { userOneAccessToken, adminAccessToken } = require('../fixtures/token.fixt
 
 setupTestDB();
 
+beforeAll(async () => {
+  await app.ready();
+});
+
 describe('User routes', () => {
   describe('POST /v1/users', () => {
     let newUser;
@@ -25,7 +29,7 @@ describe('User routes', () => {
     test('should return 201 and successfully create new user if data is ok', async () => {
       await insertUsers([admin]);
 
-      const res = await request(app)
+      const res = await request(app.server)
         .post('/v1/users')
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .send(newUser)
@@ -50,7 +54,7 @@ describe('User routes', () => {
       await insertUsers([admin]);
       newUser.role = 'admin';
 
-      const res = await request(app)
+      const res = await request(app.server)
         .post('/v1/users')
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .send(newUser)
@@ -63,13 +67,13 @@ describe('User routes', () => {
     });
 
     test('should return 401 error if access token is missing', async () => {
-      await request(app).post('/v1/users').send(newUser).expect(httpStatus.UNAUTHORIZED);
+      await request(app.server).post('/v1/users').send(newUser).expect(httpStatus.UNAUTHORIZED);
     });
 
     test('should return 403 error if logged in user is not admin', async () => {
       await insertUsers([userOne]);
 
-      await request(app)
+      await request(app.server)
         .post('/v1/users')
         .set('Authorization', `Bearer ${userOneAccessToken}`)
         .send(newUser)
@@ -80,7 +84,7 @@ describe('User routes', () => {
       await insertUsers([admin]);
       newUser.email = 'invalidEmail';
 
-      await request(app)
+      await request(app.server)
         .post('/v1/users')
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .send(newUser)
@@ -91,7 +95,7 @@ describe('User routes', () => {
       await insertUsers([admin, userOne]);
       newUser.email = userOne.email;
 
-      await request(app)
+      await request(app.server)
         .post('/v1/users')
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .send(newUser)
@@ -102,7 +106,7 @@ describe('User routes', () => {
       await insertUsers([admin]);
       newUser.password = 'passwo1';
 
-      await request(app)
+      await request(app.server)
         .post('/v1/users')
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .send(newUser)
@@ -113,7 +117,7 @@ describe('User routes', () => {
       await insertUsers([admin]);
       newUser.password = 'password';
 
-      await request(app)
+      await request(app.server)
         .post('/v1/users')
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .send(newUser)
@@ -121,7 +125,7 @@ describe('User routes', () => {
 
       newUser.password = '1111111';
 
-      await request(app)
+      await request(app.server)
         .post('/v1/users')
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .send(newUser)
@@ -132,7 +136,7 @@ describe('User routes', () => {
       await insertUsers([admin]);
       newUser.role = 'invalid';
 
-      await request(app)
+      await request(app.server)
         .post('/v1/users')
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .send(newUser)
@@ -144,7 +148,7 @@ describe('User routes', () => {
     test('should return 200 and apply the default query options', async () => {
       await insertUsers([userOne, userTwo, admin]);
 
-      const res = await request(app)
+      const res = await request(app.server)
         .get('/v1/users')
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .send()
@@ -170,13 +174,13 @@ describe('User routes', () => {
     test('should return 401 if access token is missing', async () => {
       await insertUsers([userOne, userTwo, admin]);
 
-      await request(app).get('/v1/users').send().expect(httpStatus.UNAUTHORIZED);
+      await request(app.server).get('/v1/users').send().expect(httpStatus.UNAUTHORIZED);
     });
 
     test('should return 403 if a non-admin is trying to access all users', async () => {
       await insertUsers([userOne, userTwo, admin]);
 
-      await request(app)
+      await request(app.server)
         .get('/v1/users')
         .set('Authorization', `Bearer ${userOneAccessToken}`)
         .send()
@@ -186,7 +190,7 @@ describe('User routes', () => {
     test('should correctly apply filter on name field', async () => {
       await insertUsers([userOne, userTwo, admin]);
 
-      const res = await request(app)
+      const res = await request(app.server)
         .get('/v1/users')
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .query({ name: userOne.name })
@@ -207,7 +211,7 @@ describe('User routes', () => {
     test('should correctly apply filter on role field', async () => {
       await insertUsers([userOne, userTwo, admin]);
 
-      const res = await request(app)
+      const res = await request(app.server)
         .get('/v1/users')
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .query({ role: 'user' })
@@ -229,7 +233,7 @@ describe('User routes', () => {
     test('should correctly sort the returned array if descending sort param is specified', async () => {
       await insertUsers([userOne, userTwo, admin]);
 
-      const res = await request(app)
+      const res = await request(app.server)
         .get('/v1/users')
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .query({ sortBy: 'role:desc' })
@@ -252,7 +256,7 @@ describe('User routes', () => {
     test('should correctly sort the returned array if ascending sort param is specified', async () => {
       await insertUsers([userOne, userTwo, admin]);
 
-      const res = await request(app)
+      const res = await request(app.server)
         .get('/v1/users')
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .query({ sortBy: 'role:asc' })
@@ -275,7 +279,7 @@ describe('User routes', () => {
     test('should correctly sort the returned array if multiple sorting criteria are specified', async () => {
       await insertUsers([userOne, userTwo, admin]);
 
-      const res = await request(app)
+      const res = await request(app.server)
         .get('/v1/users')
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .query({ sortBy: 'role:desc,name:asc' })
@@ -309,7 +313,7 @@ describe('User routes', () => {
     test('should limit returned array if limit param is specified', async () => {
       await insertUsers([userOne, userTwo, admin]);
 
-      const res = await request(app)
+      const res = await request(app.server)
         .get('/v1/users')
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .query({ limit: 2 })
@@ -331,7 +335,7 @@ describe('User routes', () => {
     test('should return the correct page if page and limit params are specified', async () => {
       await insertUsers([userOne, userTwo, admin]);
 
-      const res = await request(app)
+      const res = await request(app.server)
         .get('/v1/users')
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .query({ page: 2, limit: 2 })
@@ -354,7 +358,7 @@ describe('User routes', () => {
     test('should return 200 and the user object if data is ok', async () => {
       await insertUsers([userOne]);
 
-      const res = await request(app)
+      const res = await request(app.server)
         .get(`/v1/users/${userOne._id}`)
         .set('Authorization', `Bearer ${userOneAccessToken}`)
         .send()
@@ -373,13 +377,13 @@ describe('User routes', () => {
     test('should return 401 error if access token is missing', async () => {
       await insertUsers([userOne]);
 
-      await request(app).get(`/v1/users/${userOne._id}`).send().expect(httpStatus.UNAUTHORIZED);
+      await request(app.server).get(`/v1/users/${userOne._id}`).send().expect(httpStatus.UNAUTHORIZED);
     });
 
     test('should return 403 error if user is trying to get another user', async () => {
       await insertUsers([userOne, userTwo]);
 
-      await request(app)
+      await request(app.server)
         .get(`/v1/users/${userTwo._id}`)
         .set('Authorization', `Bearer ${userOneAccessToken}`)
         .send()
@@ -389,7 +393,7 @@ describe('User routes', () => {
     test('should return 200 and the user object if admin is trying to get another user', async () => {
       await insertUsers([userOne, admin]);
 
-      await request(app)
+      await request(app.server)
         .get(`/v1/users/${userOne._id}`)
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .send()
@@ -399,7 +403,7 @@ describe('User routes', () => {
     test('should return 400 error if userId is not a valid mongo id', async () => {
       await insertUsers([admin]);
 
-      await request(app)
+      await request(app.server)
         .get('/v1/users/invalidId')
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .send()
@@ -409,7 +413,7 @@ describe('User routes', () => {
     test('should return 404 error if user is not found', async () => {
       await insertUsers([admin]);
 
-      await request(app)
+      await request(app.server)
         .get(`/v1/users/${userOne._id}`)
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .send()
@@ -421,7 +425,7 @@ describe('User routes', () => {
     test('should return 204 if data is ok', async () => {
       await insertUsers([userOne]);
 
-      await request(app)
+      await request(app.server)
         .delete(`/v1/users/${userOne._id}`)
         .set('Authorization', `Bearer ${userOneAccessToken}`)
         .send()
@@ -434,13 +438,13 @@ describe('User routes', () => {
     test('should return 401 error if access token is missing', async () => {
       await insertUsers([userOne]);
 
-      await request(app).delete(`/v1/users/${userOne._id}`).send().expect(httpStatus.UNAUTHORIZED);
+      await request(app.server).delete(`/v1/users/${userOne._id}`).send().expect(httpStatus.UNAUTHORIZED);
     });
 
     test('should return 403 error if user is trying to delete another user', async () => {
       await insertUsers([userOne, userTwo]);
 
-      await request(app)
+      await request(app.server)
         .delete(`/v1/users/${userTwo._id}`)
         .set('Authorization', `Bearer ${userOneAccessToken}`)
         .send()
@@ -450,7 +454,7 @@ describe('User routes', () => {
     test('should return 204 if admin is trying to delete another user', async () => {
       await insertUsers([userOne, admin]);
 
-      await request(app)
+      await request(app.server)
         .delete(`/v1/users/${userOne._id}`)
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .send()
@@ -460,7 +464,7 @@ describe('User routes', () => {
     test('should return 400 error if userId is not a valid mongo id', async () => {
       await insertUsers([admin]);
 
-      await request(app)
+      await request(app.server)
         .delete('/v1/users/invalidId')
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .send()
@@ -470,7 +474,7 @@ describe('User routes', () => {
     test('should return 404 error if user already is not found', async () => {
       await insertUsers([admin]);
 
-      await request(app)
+      await request(app.server)
         .delete(`/v1/users/${userOne._id}`)
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .send()
@@ -487,7 +491,7 @@ describe('User routes', () => {
         password: 'newPassword1',
       };
 
-      const res = await request(app)
+      const res = await request(app.server)
         .patch(`/v1/users/${userOne._id}`)
         .set('Authorization', `Bearer ${userOneAccessToken}`)
         .send(updateBody)
@@ -512,14 +516,14 @@ describe('User routes', () => {
       await insertUsers([userOne]);
       const updateBody = { name: faker.name.findName() };
 
-      await request(app).patch(`/v1/users/${userOne._id}`).send(updateBody).expect(httpStatus.UNAUTHORIZED);
+      await request(app.server).patch(`/v1/users/${userOne._id}`).send(updateBody).expect(httpStatus.UNAUTHORIZED);
     });
 
     test('should return 403 if user is updating another user', async () => {
       await insertUsers([userOne, userTwo]);
       const updateBody = { name: faker.name.findName() };
 
-      await request(app)
+      await request(app.server)
         .patch(`/v1/users/${userTwo._id}`)
         .set('Authorization', `Bearer ${userOneAccessToken}`)
         .send(updateBody)
@@ -530,7 +534,7 @@ describe('User routes', () => {
       await insertUsers([userOne, admin]);
       const updateBody = { name: faker.name.findName() };
 
-      await request(app)
+      await request(app.server)
         .patch(`/v1/users/${userOne._id}`)
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .send(updateBody)
@@ -541,7 +545,7 @@ describe('User routes', () => {
       await insertUsers([admin]);
       const updateBody = { name: faker.name.findName() };
 
-      await request(app)
+      await request(app.server)
         .patch(`/v1/users/${userOne._id}`)
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .send(updateBody)
@@ -552,7 +556,7 @@ describe('User routes', () => {
       await insertUsers([admin]);
       const updateBody = { name: faker.name.findName() };
 
-      await request(app)
+      await request(app.server)
         .patch(`/v1/users/invalidId`)
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .send(updateBody)
@@ -563,7 +567,7 @@ describe('User routes', () => {
       await insertUsers([userOne]);
       const updateBody = { email: 'invalidEmail' };
 
-      await request(app)
+      await request(app.server)
         .patch(`/v1/users/${userOne._id}`)
         .set('Authorization', `Bearer ${userOneAccessToken}`)
         .send(updateBody)
@@ -574,7 +578,7 @@ describe('User routes', () => {
       await insertUsers([userOne, userTwo]);
       const updateBody = { email: userTwo.email };
 
-      await request(app)
+      await request(app.server)
         .patch(`/v1/users/${userOne._id}`)
         .set('Authorization', `Bearer ${userOneAccessToken}`)
         .send(updateBody)
@@ -585,7 +589,7 @@ describe('User routes', () => {
       await insertUsers([userOne]);
       const updateBody = { email: userOne.email };
 
-      await request(app)
+      await request(app.server)
         .patch(`/v1/users/${userOne._id}`)
         .set('Authorization', `Bearer ${userOneAccessToken}`)
         .send(updateBody)
@@ -596,7 +600,7 @@ describe('User routes', () => {
       await insertUsers([userOne]);
       const updateBody = { password: 'passwo1' };
 
-      await request(app)
+      await request(app.server)
         .patch(`/v1/users/${userOne._id}`)
         .set('Authorization', `Bearer ${userOneAccessToken}`)
         .send(updateBody)
@@ -607,7 +611,7 @@ describe('User routes', () => {
       await insertUsers([userOne]);
       const updateBody = { password: 'password' };
 
-      await request(app)
+      await request(app.server)
         .patch(`/v1/users/${userOne._id}`)
         .set('Authorization', `Bearer ${userOneAccessToken}`)
         .send(updateBody)
@@ -615,7 +619,7 @@ describe('User routes', () => {
 
       updateBody.password = '11111111';
 
-      await request(app)
+      await request(app.server)
         .patch(`/v1/users/${userOne._id}`)
         .set('Authorization', `Bearer ${userOneAccessToken}`)
         .send(updateBody)

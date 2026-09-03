@@ -1,7 +1,7 @@
 const request = require('supertest');
 const faker = require('faker');
 const httpStatus = require('http-status');
-const httpMocks = require('node-mocks-http');
+const fastifyPassport = require('@fastify/passport');
 const moment = require('moment');
 const bcrypt = require('bcryptjs');
 const app = require('../../src/app');
@@ -18,6 +18,10 @@ const { userOneAccessToken, adminAccessToken } = require('../fixtures/token.fixt
 
 setupTestDB();
 
+beforeAll(async () => {
+  await app.ready();
+});
+
 describe('Auth routes', () => {
   describe('POST /v1/auth/register', () => {
     let newUser;
@@ -30,7 +34,7 @@ describe('Auth routes', () => {
     });
 
     test('should return 201 and successfully register user if request data is ok', async () => {
-      const res = await request(app).post('/v1/auth/register').send(newUser).expect(httpStatus.CREATED);
+      const res = await request(app.server).post('/v1/auth/register').send(newUser).expect(httpStatus.CREATED);
 
       expect(res.body.user).not.toHaveProperty('password');
       expect(res.body.user).toEqual({
@@ -55,30 +59,30 @@ describe('Auth routes', () => {
     test('should return 400 error if email is invalid', async () => {
       newUser.email = 'invalidEmail';
 
-      await request(app).post('/v1/auth/register').send(newUser).expect(httpStatus.BAD_REQUEST);
+      await request(app.server).post('/v1/auth/register').send(newUser).expect(httpStatus.BAD_REQUEST);
     });
 
     test('should return 400 error if email is already used', async () => {
       await insertUsers([userOne]);
       newUser.email = userOne.email;
 
-      await request(app).post('/v1/auth/register').send(newUser).expect(httpStatus.BAD_REQUEST);
+      await request(app.server).post('/v1/auth/register').send(newUser).expect(httpStatus.BAD_REQUEST);
     });
 
     test('should return 400 error if password length is less than 8 characters', async () => {
       newUser.password = 'passwo1';
 
-      await request(app).post('/v1/auth/register').send(newUser).expect(httpStatus.BAD_REQUEST);
+      await request(app.server).post('/v1/auth/register').send(newUser).expect(httpStatus.BAD_REQUEST);
     });
 
     test('should return 400 error if password does not contain both letters and numbers', async () => {
       newUser.password = 'password';
 
-      await request(app).post('/v1/auth/register').send(newUser).expect(httpStatus.BAD_REQUEST);
+      await request(app.server).post('/v1/auth/register').send(newUser).expect(httpStatus.BAD_REQUEST);
 
       newUser.password = '11111111';
 
-      await request(app).post('/v1/auth/register').send(newUser).expect(httpStatus.BAD_REQUEST);
+      await request(app.server).post('/v1/auth/register').send(newUser).expect(httpStatus.BAD_REQUEST);
     });
   });
 
@@ -90,7 +94,7 @@ describe('Auth routes', () => {
         password: userOne.password,
       };
 
-      const res = await request(app).post('/v1/auth/login').send(loginCredentials).expect(httpStatus.OK);
+      const res = await request(app.server).post('/v1/auth/login').send(loginCredentials).expect(httpStatus.OK);
 
       expect(res.body.user).toEqual({
         id: expect.anything(),
@@ -112,7 +116,7 @@ describe('Auth routes', () => {
         password: userOne.password,
       };
 
-      const res = await request(app).post('/v1/auth/login').send(loginCredentials).expect(httpStatus.UNAUTHORIZED);
+      const res = await request(app.server).post('/v1/auth/login').send(loginCredentials).expect(httpStatus.UNAUTHORIZED);
 
       expect(res.body).toEqual({ code: httpStatus.UNAUTHORIZED, message: 'Incorrect email or password' });
     });
@@ -124,7 +128,7 @@ describe('Auth routes', () => {
         password: 'wrongPassword1',
       };
 
-      const res = await request(app).post('/v1/auth/login').send(loginCredentials).expect(httpStatus.UNAUTHORIZED);
+      const res = await request(app.server).post('/v1/auth/login').send(loginCredentials).expect(httpStatus.UNAUTHORIZED);
 
       expect(res.body).toEqual({ code: httpStatus.UNAUTHORIZED, message: 'Incorrect email or password' });
     });
@@ -137,14 +141,14 @@ describe('Auth routes', () => {
       const refreshToken = tokenService.generateToken(userOne._id, expires, tokenTypes.REFRESH);
       await tokenService.saveToken(refreshToken, userOne._id, expires, tokenTypes.REFRESH);
 
-      await request(app).post('/v1/auth/logout').send({ refreshToken }).expect(httpStatus.NO_CONTENT);
+      await request(app.server).post('/v1/auth/logout').send({ refreshToken }).expect(httpStatus.NO_CONTENT);
 
       const dbRefreshTokenDoc = await Token.findOne({ token: refreshToken });
       expect(dbRefreshTokenDoc).toBe(null);
     });
 
     test('should return 400 error if refresh token is missing from request body', async () => {
-      await request(app).post('/v1/auth/logout').send().expect(httpStatus.BAD_REQUEST);
+      await request(app.server).post('/v1/auth/logout').send().expect(httpStatus.BAD_REQUEST);
     });
 
     test('should return 404 error if refresh token is not found in the database', async () => {
@@ -152,7 +156,7 @@ describe('Auth routes', () => {
       const expires = moment().add(config.jwt.refreshExpirationDays, 'days');
       const refreshToken = tokenService.generateToken(userOne._id, expires, tokenTypes.REFRESH);
 
-      await request(app).post('/v1/auth/logout').send({ refreshToken }).expect(httpStatus.NOT_FOUND);
+      await request(app.server).post('/v1/auth/logout').send({ refreshToken }).expect(httpStatus.NOT_FOUND);
     });
 
     test('should return 404 error if refresh token is blacklisted', async () => {
@@ -161,7 +165,7 @@ describe('Auth routes', () => {
       const refreshToken = tokenService.generateToken(userOne._id, expires, tokenTypes.REFRESH);
       await tokenService.saveToken(refreshToken, userOne._id, expires, tokenTypes.REFRESH, true);
 
-      await request(app).post('/v1/auth/logout').send({ refreshToken }).expect(httpStatus.NOT_FOUND);
+      await request(app.server).post('/v1/auth/logout').send({ refreshToken }).expect(httpStatus.NOT_FOUND);
     });
   });
 
@@ -172,7 +176,7 @@ describe('Auth routes', () => {
       const refreshToken = tokenService.generateToken(userOne._id, expires, tokenTypes.REFRESH);
       await tokenService.saveToken(refreshToken, userOne._id, expires, tokenTypes.REFRESH);
 
-      const res = await request(app).post('/v1/auth/refresh-tokens').send({ refreshToken }).expect(httpStatus.OK);
+      const res = await request(app.server).post('/v1/auth/refresh-tokens').send({ refreshToken }).expect(httpStatus.OK);
 
       expect(res.body).toEqual({
         access: { token: expect.anything(), expires: expect.anything() },
@@ -187,7 +191,7 @@ describe('Auth routes', () => {
     });
 
     test('should return 400 error if refresh token is missing from request body', async () => {
-      await request(app).post('/v1/auth/refresh-tokens').send().expect(httpStatus.BAD_REQUEST);
+      await request(app.server).post('/v1/auth/refresh-tokens').send().expect(httpStatus.BAD_REQUEST);
     });
 
     test('should return 401 error if refresh token is signed using an invalid secret', async () => {
@@ -196,7 +200,7 @@ describe('Auth routes', () => {
       const refreshToken = tokenService.generateToken(userOne._id, expires, tokenTypes.REFRESH, 'invalidSecret');
       await tokenService.saveToken(refreshToken, userOne._id, expires, tokenTypes.REFRESH);
 
-      await request(app).post('/v1/auth/refresh-tokens').send({ refreshToken }).expect(httpStatus.UNAUTHORIZED);
+      await request(app.server).post('/v1/auth/refresh-tokens').send({ refreshToken }).expect(httpStatus.UNAUTHORIZED);
     });
 
     test('should return 401 error if refresh token is not found in the database', async () => {
@@ -204,7 +208,7 @@ describe('Auth routes', () => {
       const expires = moment().add(config.jwt.refreshExpirationDays, 'days');
       const refreshToken = tokenService.generateToken(userOne._id, expires, tokenTypes.REFRESH);
 
-      await request(app).post('/v1/auth/refresh-tokens').send({ refreshToken }).expect(httpStatus.UNAUTHORIZED);
+      await request(app.server).post('/v1/auth/refresh-tokens').send({ refreshToken }).expect(httpStatus.UNAUTHORIZED);
     });
 
     test('should return 401 error if refresh token is blacklisted', async () => {
@@ -213,7 +217,7 @@ describe('Auth routes', () => {
       const refreshToken = tokenService.generateToken(userOne._id, expires, tokenTypes.REFRESH);
       await tokenService.saveToken(refreshToken, userOne._id, expires, tokenTypes.REFRESH, true);
 
-      await request(app).post('/v1/auth/refresh-tokens').send({ refreshToken }).expect(httpStatus.UNAUTHORIZED);
+      await request(app.server).post('/v1/auth/refresh-tokens').send({ refreshToken }).expect(httpStatus.UNAUTHORIZED);
     });
 
     test('should return 401 error if refresh token is expired', async () => {
@@ -222,7 +226,7 @@ describe('Auth routes', () => {
       const refreshToken = tokenService.generateToken(userOne._id, expires);
       await tokenService.saveToken(refreshToken, userOne._id, expires, tokenTypes.REFRESH);
 
-      await request(app).post('/v1/auth/refresh-tokens').send({ refreshToken }).expect(httpStatus.UNAUTHORIZED);
+      await request(app.server).post('/v1/auth/refresh-tokens').send({ refreshToken }).expect(httpStatus.UNAUTHORIZED);
     });
 
     test('should return 401 error if user is not found', async () => {
@@ -230,7 +234,7 @@ describe('Auth routes', () => {
       const refreshToken = tokenService.generateToken(userOne._id, expires, tokenTypes.REFRESH);
       await tokenService.saveToken(refreshToken, userOne._id, expires, tokenTypes.REFRESH);
 
-      await request(app).post('/v1/auth/refresh-tokens').send({ refreshToken }).expect(httpStatus.UNAUTHORIZED);
+      await request(app.server).post('/v1/auth/refresh-tokens').send({ refreshToken }).expect(httpStatus.UNAUTHORIZED);
     });
   });
 
@@ -243,7 +247,10 @@ describe('Auth routes', () => {
       await insertUsers([userOne]);
       const sendResetPasswordEmailSpy = jest.spyOn(emailService, 'sendResetPasswordEmail');
 
-      await request(app).post('/v1/auth/forgot-password').send({ email: userOne.email }).expect(httpStatus.NO_CONTENT);
+      await request(app.server)
+        .post('/v1/auth/forgot-password')
+        .send({ email: userOne.email })
+        .expect(httpStatus.NO_CONTENT);
 
       expect(sendResetPasswordEmailSpy).toHaveBeenCalledWith(userOne.email, expect.any(String));
       const resetPasswordToken = sendResetPasswordEmailSpy.mock.calls[0][1];
@@ -254,11 +261,11 @@ describe('Auth routes', () => {
     test('should return 400 if email is missing', async () => {
       await insertUsers([userOne]);
 
-      await request(app).post('/v1/auth/forgot-password').send().expect(httpStatus.BAD_REQUEST);
+      await request(app.server).post('/v1/auth/forgot-password').send().expect(httpStatus.BAD_REQUEST);
     });
 
     test('should return 404 if email does not belong to any user', async () => {
-      await request(app).post('/v1/auth/forgot-password').send({ email: userOne.email }).expect(httpStatus.NOT_FOUND);
+      await request(app.server).post('/v1/auth/forgot-password').send({ email: userOne.email }).expect(httpStatus.NOT_FOUND);
     });
   });
 
@@ -269,7 +276,7 @@ describe('Auth routes', () => {
       const resetPasswordToken = tokenService.generateToken(userOne._id, expires, tokenTypes.RESET_PASSWORD);
       await tokenService.saveToken(resetPasswordToken, userOne._id, expires, tokenTypes.RESET_PASSWORD);
 
-      await request(app)
+      await request(app.server)
         .post('/v1/auth/reset-password')
         .query({ token: resetPasswordToken })
         .send({ password: 'password2' })
@@ -286,7 +293,10 @@ describe('Auth routes', () => {
     test('should return 400 if reset password token is missing', async () => {
       await insertUsers([userOne]);
 
-      await request(app).post('/v1/auth/reset-password').send({ password: 'password2' }).expect(httpStatus.BAD_REQUEST);
+      await request(app.server)
+        .post('/v1/auth/reset-password')
+        .send({ password: 'password2' })
+        .expect(httpStatus.BAD_REQUEST);
     });
 
     test('should return 401 if reset password token is blacklisted', async () => {
@@ -295,7 +305,7 @@ describe('Auth routes', () => {
       const resetPasswordToken = tokenService.generateToken(userOne._id, expires, tokenTypes.RESET_PASSWORD);
       await tokenService.saveToken(resetPasswordToken, userOne._id, expires, tokenTypes.RESET_PASSWORD, true);
 
-      await request(app)
+      await request(app.server)
         .post('/v1/auth/reset-password')
         .query({ token: resetPasswordToken })
         .send({ password: 'password2' })
@@ -308,7 +318,7 @@ describe('Auth routes', () => {
       const resetPasswordToken = tokenService.generateToken(userOne._id, expires, tokenTypes.RESET_PASSWORD);
       await tokenService.saveToken(resetPasswordToken, userOne._id, expires, tokenTypes.RESET_PASSWORD);
 
-      await request(app)
+      await request(app.server)
         .post('/v1/auth/reset-password')
         .query({ token: resetPasswordToken })
         .send({ password: 'password2' })
@@ -320,7 +330,7 @@ describe('Auth routes', () => {
       const resetPasswordToken = tokenService.generateToken(userOne._id, expires, tokenTypes.RESET_PASSWORD);
       await tokenService.saveToken(resetPasswordToken, userOne._id, expires, tokenTypes.RESET_PASSWORD);
 
-      await request(app)
+      await request(app.server)
         .post('/v1/auth/reset-password')
         .query({ token: resetPasswordToken })
         .send({ password: 'password2' })
@@ -333,21 +343,24 @@ describe('Auth routes', () => {
       const resetPasswordToken = tokenService.generateToken(userOne._id, expires, tokenTypes.RESET_PASSWORD);
       await tokenService.saveToken(resetPasswordToken, userOne._id, expires, tokenTypes.RESET_PASSWORD);
 
-      await request(app).post('/v1/auth/reset-password').query({ token: resetPasswordToken }).expect(httpStatus.BAD_REQUEST);
+      await request(app.server)
+        .post('/v1/auth/reset-password')
+        .query({ token: resetPasswordToken })
+        .expect(httpStatus.BAD_REQUEST);
 
-      await request(app)
+      await request(app.server)
         .post('/v1/auth/reset-password')
         .query({ token: resetPasswordToken })
         .send({ password: 'short1' })
         .expect(httpStatus.BAD_REQUEST);
 
-      await request(app)
+      await request(app.server)
         .post('/v1/auth/reset-password')
         .query({ token: resetPasswordToken })
         .send({ password: 'password' })
         .expect(httpStatus.BAD_REQUEST);
 
-      await request(app)
+      await request(app.server)
         .post('/v1/auth/reset-password')
         .query({ token: resetPasswordToken })
         .send({ password: '11111111' })
@@ -364,7 +377,7 @@ describe('Auth routes', () => {
       await insertUsers([userOne]);
       const sendVerificationEmailSpy = jest.spyOn(emailService, 'sendVerificationEmail');
 
-      await request(app)
+      await request(app.server)
         .post('/v1/auth/send-verification-email')
         .set('Authorization', `Bearer ${userOneAccessToken}`)
         .expect(httpStatus.NO_CONTENT);
@@ -379,7 +392,7 @@ describe('Auth routes', () => {
     test('should return 401 error if access token is missing', async () => {
       await insertUsers([userOne]);
 
-      await request(app).post('/v1/auth/send-verification-email').send().expect(httpStatus.UNAUTHORIZED);
+      await request(app.server).post('/v1/auth/send-verification-email').send().expect(httpStatus.UNAUTHORIZED);
     });
   });
 
@@ -390,7 +403,7 @@ describe('Auth routes', () => {
       const verifyEmailToken = tokenService.generateToken(userOne._id, expires);
       await tokenService.saveToken(verifyEmailToken, userOne._id, expires, tokenTypes.VERIFY_EMAIL);
 
-      await request(app)
+      await request(app.server)
         .post('/v1/auth/verify-email')
         .query({ token: verifyEmailToken })
         .send()
@@ -410,7 +423,7 @@ describe('Auth routes', () => {
     test('should return 400 if verify email token is missing', async () => {
       await insertUsers([userOne]);
 
-      await request(app).post('/v1/auth/verify-email').send().expect(httpStatus.BAD_REQUEST);
+      await request(app.server).post('/v1/auth/verify-email').send().expect(httpStatus.BAD_REQUEST);
     });
 
     test('should return 401 if verify email token is blacklisted', async () => {
@@ -419,7 +432,7 @@ describe('Auth routes', () => {
       const verifyEmailToken = tokenService.generateToken(userOne._id, expires);
       await tokenService.saveToken(verifyEmailToken, userOne._id, expires, tokenTypes.VERIFY_EMAIL, true);
 
-      await request(app)
+      await request(app.server)
         .post('/v1/auth/verify-email')
         .query({ token: verifyEmailToken })
         .send()
@@ -432,7 +445,7 @@ describe('Auth routes', () => {
       const verifyEmailToken = tokenService.generateToken(userOne._id, expires);
       await tokenService.saveToken(verifyEmailToken, userOne._id, expires, tokenTypes.VERIFY_EMAIL);
 
-      await request(app)
+      await request(app.server)
         .post('/v1/auth/verify-email')
         .query({ token: verifyEmailToken })
         .send()
@@ -444,7 +457,7 @@ describe('Auth routes', () => {
       const verifyEmailToken = tokenService.generateToken(userOne._id, expires);
       await tokenService.saveToken(verifyEmailToken, userOne._id, expires, tokenTypes.VERIFY_EMAIL);
 
-      await request(app)
+      await request(app.server)
         .post('/v1/auth/verify-email')
         .query({ token: verifyEmailToken })
         .send()
@@ -454,134 +467,121 @@ describe('Auth routes', () => {
 });
 
 describe('Auth middleware', () => {
-  test('should call next with no errors if access token is valid', async () => {
+  const createRequest = ({ headers = {}, params = {} } = {}) => ({
+    headers: Object.fromEntries(Object.entries(headers).map(([key, value]) => [key.toLowerCase(), value])),
+    params,
+    log: app.log,
+    passport: fastifyPassport,
+  });
+
+  const createReply = () => ({});
+
+  test('should resolve with no errors if access token is valid', async () => {
     await insertUsers([userOne]);
-    const req = httpMocks.createRequest({ headers: { Authorization: `Bearer ${userOneAccessToken}` } });
-    const next = jest.fn();
+    const req = createRequest({ headers: { Authorization: `Bearer ${userOneAccessToken}` } });
 
-    await auth()(req, httpMocks.createResponse(), next);
+    const error = await auth()(req, createReply()).catch((err) => err);
 
-    expect(next).toHaveBeenCalledWith();
+    expect(error).toBeUndefined();
     expect(req.user._id).toEqual(userOne._id);
   });
 
-  test('should call next with unauthorized error if access token is not found in header', async () => {
+  test('should reject with unauthorized error if access token is not found in header', async () => {
     await insertUsers([userOne]);
-    const req = httpMocks.createRequest();
-    const next = jest.fn();
+    const req = createRequest();
 
-    await auth()(req, httpMocks.createResponse(), next);
+    const error = await auth()(req, createReply()).catch((err) => err);
 
-    expect(next).toHaveBeenCalledWith(expect.any(ApiError));
-    expect(next).toHaveBeenCalledWith(
-      expect.objectContaining({ statusCode: httpStatus.UNAUTHORIZED, message: 'Please authenticate' })
-    );
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toEqual(expect.objectContaining({ statusCode: httpStatus.UNAUTHORIZED, message: 'Please authenticate' }));
   });
 
-  test('should call next with unauthorized error if access token is not a valid jwt token', async () => {
+  test('should reject with unauthorized error if access token is not a valid jwt token', async () => {
     await insertUsers([userOne]);
-    const req = httpMocks.createRequest({ headers: { Authorization: 'Bearer randomToken' } });
-    const next = jest.fn();
+    const req = createRequest({ headers: { Authorization: 'Bearer randomToken' } });
 
-    await auth()(req, httpMocks.createResponse(), next);
+    const error = await auth()(req, createReply()).catch((err) => err);
 
-    expect(next).toHaveBeenCalledWith(expect.any(ApiError));
-    expect(next).toHaveBeenCalledWith(
-      expect.objectContaining({ statusCode: httpStatus.UNAUTHORIZED, message: 'Please authenticate' })
-    );
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toEqual(expect.objectContaining({ statusCode: httpStatus.UNAUTHORIZED, message: 'Please authenticate' }));
   });
 
-  test('should call next with unauthorized error if the token is not an access token', async () => {
+  test('should reject with unauthorized error if the token is not an access token', async () => {
     await insertUsers([userOne]);
     const expires = moment().add(config.jwt.accessExpirationMinutes, 'minutes');
     const refreshToken = tokenService.generateToken(userOne._id, expires, tokenTypes.REFRESH);
-    const req = httpMocks.createRequest({ headers: { Authorization: `Bearer ${refreshToken}` } });
-    const next = jest.fn();
+    const req = createRequest({ headers: { Authorization: `Bearer ${refreshToken}` } });
 
-    await auth()(req, httpMocks.createResponse(), next);
+    const error = await auth()(req, createReply()).catch((err) => err);
 
-    expect(next).toHaveBeenCalledWith(expect.any(ApiError));
-    expect(next).toHaveBeenCalledWith(
-      expect.objectContaining({ statusCode: httpStatus.UNAUTHORIZED, message: 'Please authenticate' })
-    );
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toEqual(expect.objectContaining({ statusCode: httpStatus.UNAUTHORIZED, message: 'Please authenticate' }));
   });
 
-  test('should call next with unauthorized error if access token is generated with an invalid secret', async () => {
+  test('should reject with unauthorized error if access token is generated with an invalid secret', async () => {
     await insertUsers([userOne]);
     const expires = moment().add(config.jwt.accessExpirationMinutes, 'minutes');
     const accessToken = tokenService.generateToken(userOne._id, expires, tokenTypes.ACCESS, 'invalidSecret');
-    const req = httpMocks.createRequest({ headers: { Authorization: `Bearer ${accessToken}` } });
-    const next = jest.fn();
+    const req = createRequest({ headers: { Authorization: `Bearer ${accessToken}` } });
 
-    await auth()(req, httpMocks.createResponse(), next);
+    const error = await auth()(req, createReply()).catch((err) => err);
 
-    expect(next).toHaveBeenCalledWith(expect.any(ApiError));
-    expect(next).toHaveBeenCalledWith(
-      expect.objectContaining({ statusCode: httpStatus.UNAUTHORIZED, message: 'Please authenticate' })
-    );
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toEqual(expect.objectContaining({ statusCode: httpStatus.UNAUTHORIZED, message: 'Please authenticate' }));
   });
 
-  test('should call next with unauthorized error if access token is expired', async () => {
+  test('should reject with unauthorized error if access token is expired', async () => {
     await insertUsers([userOne]);
     const expires = moment().subtract(1, 'minutes');
     const accessToken = tokenService.generateToken(userOne._id, expires, tokenTypes.ACCESS);
-    const req = httpMocks.createRequest({ headers: { Authorization: `Bearer ${accessToken}` } });
-    const next = jest.fn();
+    const req = createRequest({ headers: { Authorization: `Bearer ${accessToken}` } });
 
-    await auth()(req, httpMocks.createResponse(), next);
+    const error = await auth()(req, createReply()).catch((err) => err);
 
-    expect(next).toHaveBeenCalledWith(expect.any(ApiError));
-    expect(next).toHaveBeenCalledWith(
-      expect.objectContaining({ statusCode: httpStatus.UNAUTHORIZED, message: 'Please authenticate' })
-    );
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toEqual(expect.objectContaining({ statusCode: httpStatus.UNAUTHORIZED, message: 'Please authenticate' }));
   });
 
-  test('should call next with unauthorized error if user is not found', async () => {
-    const req = httpMocks.createRequest({ headers: { Authorization: `Bearer ${userOneAccessToken}` } });
-    const next = jest.fn();
+  test('should reject with unauthorized error if user is not found', async () => {
+    const req = createRequest({ headers: { Authorization: `Bearer ${userOneAccessToken}` } });
 
-    await auth()(req, httpMocks.createResponse(), next);
+    const error = await auth()(req, createReply()).catch((err) => err);
 
-    expect(next).toHaveBeenCalledWith(expect.any(ApiError));
-    expect(next).toHaveBeenCalledWith(
-      expect.objectContaining({ statusCode: httpStatus.UNAUTHORIZED, message: 'Please authenticate' })
-    );
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toEqual(expect.objectContaining({ statusCode: httpStatus.UNAUTHORIZED, message: 'Please authenticate' }));
   });
 
-  test('should call next with forbidden error if user does not have required rights and userId is not in params', async () => {
+  test('should reject with forbidden error if user does not have required rights and userId is not in params', async () => {
     await insertUsers([userOne]);
-    const req = httpMocks.createRequest({ headers: { Authorization: `Bearer ${userOneAccessToken}` } });
-    const next = jest.fn();
+    const req = createRequest({ headers: { Authorization: `Bearer ${userOneAccessToken}` } });
 
-    await auth('anyRight')(req, httpMocks.createResponse(), next);
+    const error = await auth('anyRight')(req, createReply()).catch((err) => err);
 
-    expect(next).toHaveBeenCalledWith(expect.any(ApiError));
-    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: httpStatus.FORBIDDEN, message: 'Forbidden' }));
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toEqual(expect.objectContaining({ statusCode: httpStatus.FORBIDDEN, message: 'Forbidden' }));
   });
 
-  test('should call next with no errors if user does not have required rights but userId is in params', async () => {
+  test('should resolve with no errors if user does not have required rights but userId is in params', async () => {
     await insertUsers([userOne]);
-    const req = httpMocks.createRequest({
+    const req = createRequest({
       headers: { Authorization: `Bearer ${userOneAccessToken}` },
       params: { userId: userOne._id.toHexString() },
     });
-    const next = jest.fn();
 
-    await auth('anyRight')(req, httpMocks.createResponse(), next);
+    const error = await auth('anyRight')(req, createReply()).catch((err) => err);
 
-    expect(next).toHaveBeenCalledWith();
+    expect(error).toBeUndefined();
   });
 
-  test('should call next with no errors if user has required rights', async () => {
+  test('should resolve with no errors if user has required rights', async () => {
     await insertUsers([admin]);
-    const req = httpMocks.createRequest({
+    const req = createRequest({
       headers: { Authorization: `Bearer ${adminAccessToken}` },
       params: { userId: userOne._id.toHexString() },
     });
-    const next = jest.fn();
 
-    await auth(...roleRights.get('admin'))(req, httpMocks.createResponse(), next);
+    const error = await auth(...roleRights.get('admin'))(req, createReply()).catch((err) => err);
 
-    expect(next).toHaveBeenCalledWith();
+    expect(error).toBeUndefined();
   });
 });

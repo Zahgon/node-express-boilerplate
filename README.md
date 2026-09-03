@@ -4,7 +4,7 @@
 [![Coverage Status](https://coveralls.io/repos/github/hagopj13/node-express-boilerplate/badge.svg?branch=master)](https://coveralls.io/github/hagopj13/node-express-boilerplate?branch=master)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](http://makeapullrequest.com)
 
-A boilerplate/starter project for quickly building RESTful APIs using Node.js, Express, and Mongoose.
+A boilerplate/starter project for quickly building RESTful APIs using Node.js, Fastify, and Mongoose.
 
 By running a single command, you will get a production-ready Node.js app installed and fully configured on your machine. The app comes with many built-in features, such as authentication using JWT, request validation, unit and integration tests, continuous integration, docker support, API documentation, pagination, etc. For more details, check the features list below.
 
@@ -67,19 +67,19 @@ cp .env.example .env
 ## Features
 
 - **NoSQL database**: [MongoDB](https://www.mongodb.com) object data modeling using [Mongoose](https://mongoosejs.com)
-- **Authentication and authorization**: using [passport](http://www.passportjs.org)
+- **Authentication and authorization**: using [@fastify/passport](https://github.com/fastify/fastify-passport)
 - **Validation**: request data validation using [Joi](https://github.com/hapijs/joi)
-- **Logging**: using [winston](https://github.com/winstonjs/winston) and [morgan](https://github.com/expressjs/morgan)
+- **Logging**: using [winston](https://github.com/winstonjs/winston)
 - **Testing**: unit and integration tests using [Jest](https://jestjs.io)
 - **Error handling**: centralized error handling mechanism
-- **API documentation**: with [swagger-jsdoc](https://github.com/Surnet/swagger-jsdoc) and [swagger-ui-express](https://github.com/scottie1984/swagger-ui-express)
+- **API documentation**: with [swagger-jsdoc](https://github.com/Surnet/swagger-jsdoc) and [@fastify/swagger-ui](https://github.com/fastify/fastify-swagger-ui)
 - **Process management**: advanced production process management using [PM2](https://pm2.keymetrics.io)
 - **Dependency management**: with [Yarn](https://yarnpkg.com)
 - **Environment variables**: using [dotenv](https://github.com/motdotla/dotenv) and [cross-env](https://github.com/kentcdodds/cross-env#readme)
-- **Security**: set security HTTP headers using [helmet](https://helmetjs.github.io)
+- **Security**: set security HTTP headers using [@fastify/helmet](https://github.com/fastify/fastify-helmet)
 - **Santizing**: sanitize request data against xss and query injection
-- **CORS**: Cross-Origin Resource-Sharing enabled using [cors](https://github.com/expressjs/cors)
-- **Compression**: gzip compression with [compression](https://github.com/expressjs/compression)
+- **CORS**: Cross-Origin Resource-Sharing enabled using [@fastify/cors](https://github.com/fastify/fastify-cors)
+- **Compression**: gzip compression with [@fastify/compress](https://github.com/fastify/fastify-compress)
 - **CI**: continuous integration with [Travis CI](https://travis-ci.org)
 - **Docker support**
 - **Code coverage**: using [coveralls](https://coveralls.io)
@@ -179,13 +179,13 @@ src\
  |--config\         # Environment variables and configuration related things
  |--controllers\    # Route controllers (controller layer)
  |--docs\           # Swagger files
- |--middlewares\    # Custom express middlewares
+ |--middlewares\    # Custom fastify hooks
  |--models\         # Mongoose models (data layer)
  |--routes\         # Routes
  |--services\       # Business logic (service layer)
  |--utils\          # Utility classes and functions
  |--validations\    # Request data validation schemas
- |--app.js          # Express app
+ |--app.js          # Fastify app
  |--index.js        # App entry point
 ```
 
@@ -217,13 +217,13 @@ List of available routes:
 
 The app has a centralized error handling mechanism.
 
-Controllers should try to catch the errors and forward them to the error handling middleware (by calling `next(error)`). For convenience, you can also wrap the controller inside the catchAsync utility wrapper, which forwards the error.
+Errors thrown from a route handler are forwarded to the error handler of the app. For convenience, you can also wrap the controller inside the catchAsync utility wrapper, which forwards the error.
 
 ```javascript
 const catchAsync = require('../utils/catchAsync');
 
-const controller = catchAsync(async (req, res) => {
-  // this error will be forwarded to the error handling middleware
+const controller = catchAsync(async (request, reply) => {
+  // this error will be forwarded to the error handler
   throw new Error('Something wrong happened');
 });
 ```
@@ -263,14 +263,13 @@ Request data is validated using [Joi](https://joi.dev/). Check the [documentatio
 The validation schemas are defined in the `src/validations` directory and are used in the routes by providing them as parameters to the `validate` middleware.
 
 ```javascript
-const express = require('express');
 const validate = require('../../middlewares/validate');
 const userValidation = require('../../validations/user.validation');
 const userController = require('../../controllers/user.controller');
 
-const router = express.Router();
-
-router.post('/users', validate(userValidation.createUser), userController.createUser);
+const router = async (fastify) => {
+  fastify.post('/users', { preHandler: [validate(userValidation.createUser)] }, userController.createUser);
+};
 ```
 
 ## Authentication
@@ -278,13 +277,12 @@ router.post('/users', validate(userValidation.createUser), userController.create
 To require authentication for certain routes, you can use the `auth` middleware.
 
 ```javascript
-const express = require('express');
 const auth = require('../../middlewares/auth');
 const userController = require('../../controllers/user.controller');
 
-const router = express.Router();
-
-router.post('/users', auth(), userController.createUser);
+const router = async (fastify) => {
+  fastify.post('/users', { preHandler: [auth()] }, userController.createUser);
+};
 ```
 
 These routes require a valid JWT access token in the Authorization request header using the Bearer schema. If the request does not contain a valid access token, an Unauthorized (401) error is thrown.
@@ -306,13 +304,12 @@ A refresh token is valid for 30 days. You can modify this expiration time by cha
 The `auth` middleware can also be used to require certain rights/permissions to access a route.
 
 ```javascript
-const express = require('express');
 const auth = require('../../middlewares/auth');
 const userController = require('../../controllers/user.controller');
 
-const router = express.Router();
-
-router.post('/users', auth('manageUsers'), userController.createUser);
+const router = async (fastify) => {
+  fastify.post('/users', { preHandler: [auth('manageUsers')] }, userController.createUser);
+};
 ```
 
 In the example above, an authenticated user can access this route only if that user has the `manageUsers` permission.
@@ -344,7 +341,7 @@ In production mode, only `info`, `warn`, and `error` logs will be printed to the
 It is up to the server (or process manager) to actually read them from the console and store them in log files.\
 This app uses pm2 in production mode, which is already configured to store the logs in log files.
 
-Note: API request information (request url, response code, timestamp, etc.) are also automatically logged (using [morgan](https://github.com/expressjs/morgan)).
+Note: API request information (request url, response code, timestamp, etc.) are also automatically logged (using the http logger in `src/config/httpLogger.js`).
 
 ## Custom Mongoose Plugins
 
